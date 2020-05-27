@@ -52,13 +52,6 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Aliyun\Model\FilePartETag.cs" />
-    <Compile Include="Aliyun\FileMultipartUploader.cs" />
-    <Compile Include="Aliyun\Model\FileUploadEventArgs.cs" />
-    <Compile Include="Aliyun\UploadPartContext.cs" />
-    <Compile Include="Aliyun\UploadPartContextWrapper.cs" />
-    <Compile Include="Aliyun\UploadPartCopyContext.cs" />
-    <Compile Include="Aliyun\UploadPartCopyContextWrapper.cs" />
     <Compile Include="FileChecker.cs" />
     <Compile Include="FileUpLoadCompletedEventArgs.cs" />
     <Compile Include="TransferProgressChangedEventArgs.cs" />
@@ -78,16 +71,10 @@
   <ItemGroup>
     <Content Include="版本说明.txt" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\FTPClient0623\FTPClient\Aliyun.OSS\Aliyun.OSS.csproj">
-      <Project>{ba02c9cc-1da5-47cb-90a0-a6053f5439e1}</Project>
-      <Name>Aliyun.OSS</Name>
-    </ProjectReference>
-  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <ProjectExtensions>
     <VisualStudio>
-      <UserProperties Reactor_Output="" Reactor_Configuration="" Reactor_Project="" Reactor_Commands="" Reactor_Enabled="1" Reactor_Deploy="1" />
+      <UserProperties Reactor_Deploy="1" Reactor_Enabled="1" Reactor_Commands="" Reactor_Project="" Reactor_Configuration="" Reactor_Output="" />
     </VisualStudio>
   </ProjectExtensions>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
