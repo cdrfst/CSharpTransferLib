@@ -11,7 +11,7 @@ namespace TransferLib.Http
 {
     public sealed class HttpFileDownloader : FileDownloader
     {
-
+        private MyWebClient wc = null;
         #region 构造函数
 
         /// <summary>
@@ -28,7 +28,8 @@ namespace TransferLib.Http
             var fileInfo = GetFileInfo(downloadFileUrl);
             FileName = fileInfo.Item1;
             ExtensionName = fileInfo.Item2;
-            GetFileSize();
+            //GetFileSize();//此方式在网络被篡改时无法获取文件大小 导致不能下载文件
+            GetFileSize2();
         }
 
         /// <summary>
@@ -52,37 +53,77 @@ namespace TransferLib.Http
             UserState = userState;
             var action = new Action(() =>
             {
-                //获取拆分的下载片断
-                FileSegmentsManager = HttpFileSegmentsManager.Create();
-                FileSegmentsManager.AddFile(TempDir, FileName, FileLength,LastModified);
-                Segments.Value.AddRange(FileSegmentsManager.GetSegmentsByFileName(FileName));
-                var sgmtGroupList = Segments.Value.Take(MaxThreadCount);
-                int skipCount = 0;
-                while (sgmtGroupList.Any())
+                /*
+                 * 如支持断点续传且文件大小>=10MB
+                 * 则获取拆分的下载片断
+                 */
+                if (!BreakpointResumeDisabled && FileLength >= 10 * 1024 * 1024)
                 {
-                    foreach (var segment in sgmtGroupList)
+                    FileSegmentsManager = HttpFileSegmentsManager.Create();
+                    FileSegmentsManager.AddFile(TempDir, FileName, FileLength, LastModified);
+                    Segments.Value.AddRange(FileSegmentsManager.GetSegmentsByFileName(FileName));
+                    var sgmtGroupList = Segments.Value.Take(MaxThreadCount);
+                    int skipCount = 0;
+                    while (sgmtGroupList.Any())
                     {
-                        var cts = new System.Threading.CancellationTokenSource();
-                        var task = Task.Factory.StartNew(FillSenmentData, segment, cts.Token);
-                        SegmentRunningTasks.Value.Add(task);
-                        //task.Wait(); //方便调试
+                        foreach (var segment in sgmtGroupList)
+                        {
+                            var cts = new System.Threading.CancellationTokenSource();
+                            var task = Task.Factory.StartNew(FillSenmentData, segment, cts.Token);
+                            SegmentRunningTasks.Value.Add(task);
+                            //task.Wait(); //方便调试
+                        };
+                        try
+                        {
+                            Task.WaitAll(SegmentRunningTasks.Value.ToArray());
+                        }
+                        catch (AggregateException ae)
+                        {
+                            OnFileDownloadCompletedEventHandler(new FileDownLoadCompletedEventArgs(TransferState.Error, ae.GetErrorString(), this.UserState));
+                            break;
+                        }
+                        catch (Exception e)
+                        {
+                            OnFileDownloadCompletedEventHandler(new FileDownLoadCompletedEventArgs(TransferState.Error, e.GetErrorString(), this.UserState));
+                            break;
+                        }
+                        skipCount += MaxThreadCount;
+                        sgmtGroupList = Segments.Value.Skip(skipCount).Take(MaxThreadCount);
+                    }
+                }
+                else
+                {
+                    if (wc == null)
+                    {
+                        wc = new MyWebClient();
+
+                    }
+                    var tempDir = Path.Combine(TempDir, FileName, DateTime.Now.ToFileTimeUtc().ToString());
+                    if (!Directory.Exists(tempDir))
+                    {
+                        Directory.CreateDirectory(tempDir);
+                    }
+                    var targetFileName = string.IsNullOrEmpty(ExtensionName) ? Path.Combine(tempDir, FileName) : Path.Combine(tempDir, FileName) + "." + ExtensionName;
+
+                    wc.DownloadProgressChanged += (s, e) =>
+                    {
+                        lock (this.wc)
+                        {
+                            OnProgressChanged(new ProgressChangedEventArgs(e.ProgressPercentage, this.UserState));
+                        }
                     };
-                    try
+                    wc.DownloadFileCompleted += (s, e) =>
                     {
-                        Task.WaitAll(SegmentRunningTasks.Value.ToArray());
-                    }
-                    catch (AggregateException ae)
-                    {
-                        OnFileDownloadCompletedEventHandler(new FileDownLoadCompletedEventArgs(TransferState.Error, ae.GetErrorString(),this.UserState));
-                        break;
-                    }
-                    catch (Exception e)
-                    {
-                        OnFileDownloadCompletedEventHandler(new FileDownLoadCompletedEventArgs(TransferState.Error, e.GetErrorString(), this.UserState));
-                        break;
-                    }
-                    skipCount += MaxThreadCount;
-                    sgmtGroupList = Segments.Value.Skip(skipCount).Take(MaxThreadCount);
+                        if (e.Error == null && !e.Cancelled)
+                        {
+                            OnFileDownloadCompletedEventHandler(new FileDownLoadCompletedEventArgs(TransferState.Completed, e.UserState.ToString(), UserState));
+                        }
+                        else
+                        {
+                            OnFileDownloadCompletedEventHandler(new FileDownLoadCompletedEventArgs(TransferState.Error, e.Error?.GetErrorString(), this.UserState));
+                        }
+                    };
+                    wc.DownloadFileAsync(new Uri(DownloadFileUrl), targetFileName, targetFileName);
                 }
             });
             action.BeginInvoke(null, null);
@@ -210,6 +251,31 @@ namespace TransferLib.Http
             catch (Exception e)
             {
                 throw new Exception(string.Format("Http获取文件大小时异常:\r\n{0}", e.GetErrorString()));
+            }
+        }
+
+        private void GetFileSize2()
+        {
+            try
+            {
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(DownloadFileUrl);
+                request.Method = "HEAD";
+                HttpWebResponse resp = (HttpWebResponse)(request.GetResponse());
+                FileLength = Convert.ToInt32(resp.ContentLength);
+                LastModified = resp.LastModified.ToFileTimeUtc().ToString();
+
+                BreakpointResumeDisabled = !(resp.Headers["Accept-Ranges"] != null &
+                                        resp.Headers["Accept-Ranges"] == "bytes");
+            }
+            catch (WebException we)
+            {
+                BreakpointResumeDisabled = true;
+                //throw new WebException(string.Format("GetFileSize2:\r\n{0}", we.GetErrorString()));
+            }
+            catch (Exception e)
+            {
+                BreakpointResumeDisabled = true;
+                //throw new Exception(string.Format("Http获取文件大小时异常:\r\n{0}", e.GetErrorString()));
             }
         }
 

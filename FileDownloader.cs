@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Net;
 
 namespace TransferLib
 {
@@ -17,7 +18,7 @@ namespace TransferLib
         #region 委托事件
         public delegate void FileDownloadEventHandler(object sender, FileDownLoadCompletedEventArgs e);
         /// <summary>
-        /// 
+        /// 下载时的进度通知
         /// </summary>
         public event ProgressChangedEventHandler ProgressChanged;
         /// <summary>
@@ -121,6 +122,11 @@ namespace TransferLib
 
         protected object UserState;
 
+        /// <summary>
+        /// 禁用断点续传
+        /// </summary>
+        public bool BreakpointResumeDisabled { get; set; }
+
         #endregion
 
         #region 事件触发器
@@ -130,7 +136,14 @@ namespace TransferLib
         /// <param name="e"></param>
         protected virtual void OnProgressChanged(ProgressChangedEventArgs e)
         {
-            if (ProgressChanged != null) ProgressChanged(this, e);
+            try
+            {
+                ProgressChanged?.Invoke(this, e);
+            }
+            catch (Exception)
+            {
+                //ignore
+            }
         }
         /// <summary>
         /// 用于触发文件下载完成事件FileDownloadCompletedEvent
@@ -186,7 +199,7 @@ namespace TransferLib
             lock (this)
             {
                 OffSet += segment.Lenght;
-                OnProgressChanged(new ProgressChangedEventArgs(OffSet, UserState));
+                OnProgressChanged(new ProgressChangedEventArgs((int)Math.Floor(100f * OffSet / this.FileLength), UserState));
             }
             if (!segment.FileNeedToWrite && FileLength != OffSet) return;
             if (segment.FileNeedToWrite)
@@ -246,6 +259,7 @@ namespace TransferLib
                 if (!File.Exists(item.SegmentFullName)) return;
                 try
                 {
+                    File.SetAttributes(item.SegmentFullName, FileAttributes.Normal);
                     File.Delete(item.SegmentFullName);
                 }
                 catch

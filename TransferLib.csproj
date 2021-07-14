@@ -54,6 +54,9 @@
   <ItemGroup>
     <Compile Include="FileChecker.cs" />
     <Compile Include="FileUpLoadCompletedEventArgs.cs" />
+    <Compile Include="MyWebClient.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="TransferProgressChangedEventArgs.cs" />
     <Compile Include="TransferState.cs" />
     <Compile Include="FileDownloader.cs" />
