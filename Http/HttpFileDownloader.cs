@@ -15,7 +15,7 @@ namespace TransferLib.Http
         #region 构造函数
 
         /// <summary>
-        /// 创建Http文件下载实例
+        /// 创建Http文件下载实例,单线程下载不支持断点续传
         /// (异常:System.Exception)
         /// </summary>
         /// <param name="downloadFileUrl"></param>
@@ -28,12 +28,10 @@ namespace TransferLib.Http
             var fileInfo = GetFileInfo(downloadFileUrl);
             FileName = fileInfo.Item1;
             ExtensionName = fileInfo.Item2;
-            //GetFileSize();//此方式在网络被篡改时无法获取文件大小 导致不能下载文件
-            GetFileSize2();
         }
 
         /// <summary>
-        /// 创建Http文件下载实例
+        /// 创建Http文件下载实例,仅多线程下载时(maxThreadCount>1)支持断点续传
         /// (异常:System.Exception)
         /// </summary>
         /// <param name="downloadFileUrl"></param>
@@ -42,6 +40,7 @@ namespace TransferLib.Http
             : this(downloadFileUrl)
         {
             base.MaxThreadCount = maxThreadCount;
+            this.BreakpointResumeEnabled = maxThreadCount>1;
         }
 
         #endregion
@@ -54,11 +53,12 @@ namespace TransferLib.Http
             var action = new Action(() =>
             {
                 /*
-                 * 如支持断点续传且文件大小>=10MB
+                 * 如支持断点续传
                  * 则获取拆分的下载片断
                  */
-                if (!BreakpointResumeDisabled && FileLength >= 10 * 1024 * 1024)
+                if (BreakpointResumeEnabled)
                 {
+                    GetFileSize2();
                     FileSegmentsManager = HttpFileSegmentsManager.Create();
                     FileSegmentsManager.AddFile(TempDir, FileName, FileLength, LastModified);
                     Segments.Value.AddRange(FileSegmentsManager.GetSegmentsByFileName(FileName));
@@ -171,7 +171,7 @@ namespace TransferLib.Http
                             request.AddRange(segment.From, segment.To - 1);
                         }
                         request.Timeout = TimeOut;
-                        request.Proxy = null;
+                        //request.Proxy = null;//使用默认代理,方便fiddler抓206包
                         using (var response = (HttpWebResponse)request.GetResponse())
                         using (var rsStream = response.GetResponseStream())
                         {
@@ -264,18 +264,16 @@ namespace TransferLib.Http
                 FileLength = Convert.ToInt32(resp.ContentLength);
                 LastModified = resp.LastModified.ToFileTimeUtc().ToString();
 
-                BreakpointResumeDisabled = !(resp.Headers["Accept-Ranges"] != null &
-                                        resp.Headers["Accept-Ranges"] == "bytes");
+                //BreakpointResumeDisabled = !(resp.Headers["Accept-Ranges"] != null &
+                //                        resp.Headers["Accept-Ranges"] == "bytes");
             }
             catch (WebException we)
             {
-                BreakpointResumeDisabled = true;
-                //throw new WebException(string.Format("GetFileSize2:\r\n{0}", we.GetErrorString()));
+                throw new WebException(string.Format("GetFileSize2:\r\n{0}", we.GetErrorString()));
             }
             catch (Exception e)
             {
-                BreakpointResumeDisabled = true;
-                //throw new Exception(string.Format("Http获取文件大小时异常:\r\n{0}", e.GetErrorString()));
+                throw new Exception(string.Format("Http获取文件大小时异常:\r\n{0}", e.GetErrorString()));
             }
         }
 

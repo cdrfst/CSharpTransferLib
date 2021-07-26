@@ -123,9 +123,9 @@ namespace TransferLib
         protected object UserState;
 
         /// <summary>
-        /// 禁用断点续传
+        /// 启用断点续传功能
         /// </summary>
-        public bool BreakpointResumeDisabled { get; set; }
+        protected bool BreakpointResumeEnabled { get; set; }
 
         #endregion
 
