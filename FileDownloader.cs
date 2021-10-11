@@ -63,7 +63,7 @@ namespace TransferLib
         /// <summary>
         /// 文件的网络下载路径
         /// </summary>
-        protected string DownloadFileUrl;
+        public string DownloadFileUrl { protected set; get; }
 
         /// <summary>
         /// 根据最小单位拆分后的单个文件片段集合
